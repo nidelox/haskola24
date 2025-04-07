@@ -105,7 +105,7 @@ class API:
         raise Exception(f'Error: {jsonResponse["data"]["validationErrors"]}')
 
   # Function to get timetable
-  def get_timetable_internal(self, render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year):
+  def __get_timetable(self, render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year):
     """
     Retrieves the timetable for a given school unit, week and year.
 
@@ -190,7 +190,7 @@ class API:
 
     schema_guid = self.get_schema_guid(host_name, unit_guid, schema_id)
     
-    timetable_data = self.get_timetable_internal(render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year)
+    timetable_data = self.__get_timetable(render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year)
     if not len(timetable_data['validation']) > 0:
       dates = {}
       
