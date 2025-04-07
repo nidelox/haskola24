@@ -1,9 +1,10 @@
 import requests
 import json
 import datetime
+import uuid
 
 class API:
-  x_scope=""
+  x_scope="8a22163c-8662-4535-9050-bc5e1923df48"
   def __init__(self):
     self.session = requests.Session()
     self.base_url = "https://web.skola24.se"
@@ -11,13 +12,11 @@ class API:
       "Accept": "application/json, text/javascript, */*; q=0.01",
       "Accept-Language": "en-US,en;q=0.5",
       "Content-Type": "application/json",
-      "X-Scope": self.x_scope,
+      "X-Scope": self.x_scope, #str(uuid.uuid4()),
       "X-Requested-With": "XMLHttpRequest",
       "Origin": self.base_url,
       "Connection": "keep-alive",
     }
-
-
 
   # Function to get key
   def get_key(self):
@@ -53,6 +52,7 @@ class API:
     return response.json()
 
   def get_units(self, host_name:str):
+      
       """
       Retrieves a list of units (schools) associated with the specified host name.
 
@@ -72,7 +72,9 @@ class API:
           "hostName": host_name
         }
       }
+
       response = self.session.post(url, headers=self.headers, json=payload)
+
       jsonResponse = json.loads(response.text)
       if not jsonResponse['data'].get('validationErrors'):
         return jsonResponse['data']['getTimetableViewerUnitsResponse']['units']
@@ -103,7 +105,7 @@ class API:
         raise Exception(f'Error: {jsonResponse["data"]["validationErrors"]}')
 
   # Function to get timetable
-  def get_timetable(self, render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year):
+  def get_timetable_internal(self, render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year):
     """
     Retrieves the timetable for a given school unit, week and year.
 
@@ -149,73 +151,74 @@ class API:
 
 
 
-def get_timetable(host_name:str, unit_name, schema_id:str, week:int, year:int):
-  """
-  Returns a list of lessons for a given week and year, for a specific unit and schema ID.
+  def get_timetable(self, host_name:str, unit_name, schema_id:str, week:int):
+    """
+    Returns a list of lessons for a given week and year, for a specific unit and schema ID.
 
-  Args:
-  - host_name (str): The name of the host.
-  - unit_name (str): The name of the unit.
-  - schema_id (str): The schema ID.
-  - week (int): The week number.
-  - year (int): The year.
+    Args:
+    - host_name (str): The name of the host.
+    - unit_name (str): The name of the unit.
+    - schema_id (str): The schema ID.
+    - week (int): The week number.
 
-  Returns:
-  - A list of dictionaries, where each dictionary represents a lesson and contains the following keys:
-    - title (str): The title of the lesson.
-    - date (str): The date of the lesson in the format "YYYY-MM-DD".
-    - start_time (str): The start time of the lesson in the format "HH:MM".
-    - end_time (str): The end time of the lesson in the format "HH:MM".
-    - teacher (str): The name of the teacher.
-    - location (str): The location of the lesson.
-  """
-  api = API()
-  # Get unit guid
-  units = api.get_units(host_name)
-  unit_guid = None
-  for unit in units:
-    if unit['unitId'] == unit_name:
-      unit_guid = unit['unitGuid']
-      
-  if not unit_guid:
-    raise ValueError(f'Unit {unit_name} not found in {host_name}')
 
-  # Get school year guid
-  school_year_guid = api.get_active_school_years(host_name)['data']['activeSchoolYears'][0]['guid']
-  
-  render_key = api.get_key()
-
-  schema_guid = api.get_schema_guid(host_name, unit_guid, schema_id)
-  
-  timetable_data = api.get_timetable(render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year)
-  if not len(timetable_data['validation']) > 0:
-    dates = {}
+    Returns:
+    - A list of dictionaries, where each dictionary represents a lesson and contains the following keys:
+      - title (str): The title of the lesson.
+      - date (str): The date of the lesson in the format "YYYY-MM-DD".
+      - start_time (str): The start time of the lesson in the format "HH:MM".
+      - end_time (str): The end time of the lesson in the format "HH:MM".
+      - teacher (str): The name of the teacher.
+      - location (str): The location of the lesson.
+    """
     
-    for item in timetable_data["data"]["textList"]:
-      if item['type'] == 'HeadingDay':
-        day_of_week = item['text'].split(' ')[0]
-        day = int(item['text'].split(' ')[1].split('/')[0])
-        month = int(item['text'].split(' ')[1].split('/')[1])
-        dates[{'Måndag':1, 'Tisdag':2, 'Onsdag':3, 'Torsdag':4, 'Fredag':5,}[day_of_week]] = {'day':day, 'month':month}
-    lessons = []
-    for lesson in timetable_data["data"]["lessonInfo"]:
-      teacher = lesson['texts'][1] if len(lesson['texts']) > 1 else ''
-      location = lesson['texts'][2] if len(lesson['texts']) > 2 else ''
-      date=datetime.date(year, dates[lesson['dayOfWeekNumber']]['month'], dates[lesson['dayOfWeekNumber']]['day'])
-      start_time = datetime.time.fromisoformat(lesson['timeStart'])
-      end_time = datetime.time.fromisoformat(lesson['timeEnd'])
-      lessons.append({
-        'title': lesson['texts'][0],
-        'date': date.isoformat(), 
-        'start_time': start_time.isoformat(),
-        'end_time': end_time.isoformat(),
-        'teacher': teacher,
-        'location': location,
-      })
-      
-    return lessons
+    # Get unit guid
+    units = self.get_units(host_name)
+    unit_guid = None
+    for unit in units:
+      if unit['unitId'] == unit_name:
+        unit_guid = unit['unitGuid']
+        
+    if not unit_guid:
+      raise ValueError(f'Unit {unit_name} not found in {host_name}')
 
-  elif timetable_data['validation'][0]['code'] == 4:
-    raise ValueError(f'Schema ID not found in {host_name}/{unit_name}')
-  else:
-    raise Exception(f"Error: {timetable_data['validation']}")
+    # Get school year guid
+    year = datetime.date.today().year
+    school_year_guid = self.get_active_school_years(host_name)['data']['activeSchoolYears'][0]['guid']
+    
+    render_key = self.get_key()
+
+    schema_guid = self.get_schema_guid(host_name, unit_guid, schema_id)
+    
+    timetable_data = self.get_timetable_internal(render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year)
+    if not len(timetable_data['validation']) > 0:
+      dates = {}
+      
+      for item in timetable_data["data"]["textList"]:
+        if item['type'] == 'HeadingDay':
+          day_of_week = item['text'].split(' ')[0]
+          day = int(item['text'].split(' ')[1].split('/')[0])
+          month = int(item['text'].split(' ')[1].split('/')[1])
+          dates[{'Måndag':1, 'Tisdag':2, 'Onsdag':3, 'Torsdag':4, 'Fredag':5,}[day_of_week]] = {'day':day, 'month':month}
+      lessons = []
+      for lesson in timetable_data["data"]["lessonInfo"]:
+        teacher = lesson['texts'][1] if len(lesson['texts']) > 1 else ''
+        location = lesson['texts'][2] if len(lesson['texts']) > 2 else ''
+        date=datetime.date(year, dates[lesson['dayOfWeekNumber']]['month'], dates[lesson['dayOfWeekNumber']]['day'])
+        start_time = datetime.time.fromisoformat(lesson['timeStart'])
+        end_time = datetime.time.fromisoformat(lesson['timeEnd'])
+        lessons.append({
+          'title': lesson['texts'][0],
+          'date': date.isoformat(), 
+          'start_time': start_time.isoformat(),
+          'end_time': end_time.isoformat(),
+          'teacher': teacher,
+          'location': location,
+        })
+        
+      return lessons
+
+    elif timetable_data['validation'][0]['code'] == 4:
+      raise ValueError(f'Schema ID not found in {host_name}/{unit_name}')
+    else:
+      raise Exception(f"Error: {timetable_data['validation']}")
