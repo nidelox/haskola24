@@ -5,7 +5,7 @@ skola24 = API()
 skola24.x_scope = '8a22163c-8662-4535-9050-bc5e1923df48'
 host_name = 'linkoping.skola24.se'
 unit_name = 'Berzeliusskolan gymnasium'
-schema_id = 'NA24E_BER'
+schema_id = 'NA22E_BER'
 week = datetime.now().isocalendar()[1]
 print(f"Current week: {week}")
 year = 2025
