@@ -42,6 +42,9 @@ class Skola24Coordinator(DataUpdateCoordinator):
                 res = await api.get_timetable(
                     self.host_name, self.unit_name, self.schema_id, self.week
                 )
+                res += await api.get_timetable(
+                    self.host_name, self.unit_name, self.schema_id, self.week + 1
+                )
                 self.async_set_updated_data({"schema": res})
                 return res
             except Exception as err:
