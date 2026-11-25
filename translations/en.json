@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Skola24",
+        "data": {
+          "hostname": "Host name",
+          "unitname": "School (unit) name",
+          "schemaname": "Schedule (class) name"
+        }
+      }
+    },
+    "error": {
+      "not_found": "The school or schedule was not found on this host",
+      "cannot_connect": "Failed to connect to Skola24",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This schedule is already configured"
+    }
+  }
+}
