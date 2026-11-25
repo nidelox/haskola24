@@ -1,13 +1,13 @@
 {
   "domain": "skola24",
   "name": "Skola 24",
-  "codeowners": [],
+  "codeowners": ["@nidelox"],
+  "issue_tracker": "https://github.com/nidelox/haskola24/issues",
   "dependencies": [],
   "integration_type": "hub",
-  "documentation": "https://github.com/home-assistant/example-custom-config/tree/master/custom_components/hello_world/",
+  "documentation": "https://github.com/nidelox/haskola24",
   "iot_class": "cloud_polling",
   "requirements": [],
   "version": "0.1.0",
-  "config_flow": true,
-  "platforms": ["calendar"]
+  "config_flow": true
 }

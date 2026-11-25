@@ -2,34 +2,34 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, time, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, SCHEMA_NAME
-from .coordinator import Skola24Coordinator
+from .const import SCHEMA_NAME
+from .coordinator import Skola24ConfigEntry, Skola24Coordinator
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: Skola24ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Skola24 calendar from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     schema_id = entry.data[SCHEMA_NAME]
     async_add_entities([Skola24CalendarEntity(coordinator, schema_id)])
 
 
-class Skola24CalendarEntity(CalendarEntity):
+class Skola24CalendarEntity(CoordinatorEntity[Skola24Coordinator], CalendarEntity):
     """A calendar entity for Skola24 lessons."""
 
     def __init__(self, coordinator: Skola24Coordinator, schema: str) -> None:
-        self.coordinator = coordinator
+        super().__init__(coordinator)
         self._attr_unique_id = f"{schema}-calendar"
         self._attr_name = f"Skola24 {schema}"
         self.schema = schema
@@ -65,7 +65,7 @@ class Skola24CalendarEntity(CalendarEntity):
 
     async def async_get_events_today(self, hass: HomeAssistant):
         """Return all lessons for today as CalendarEvents."""
-        today = date.today().isoformat()
+        today = dt_util.now().date().isoformat()
         if not self.coordinator.data:
             return []
         return [
@@ -79,8 +79,9 @@ class Skola24CalendarEntity(CalendarEntity):
 
         if not self.coordinator.data:
             return None
-        today = date.today().isoformat()
-        now = datetime.now().time()
+        now_dt = dt_util.now()
+        today = now_dt.date().isoformat()
+        now = now_dt.time()
         todays_lessons = [
             lesson for lesson in self.coordinator.data if lesson.get("date") == today
         ]
@@ -88,12 +89,12 @@ class Skola24CalendarEntity(CalendarEntity):
             todays_lessons, key=lambda lesson: lesson.get("start_time")
         ):
             try:
-                lesson_time = datetime.fromisoformat(lesson["start_time"]).time()
+                lesson_time = time.fromisoformat(lesson["start_time"])
                 if lesson_time > now:
                     return lesson
             except Exception:
                 continue
-        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        tomorrow = (now_dt.date() + timedelta(days=1)).isoformat()
         tomorrows_lessons = [
             lesson for lesson in self.coordinator.data if lesson.get("date") == tomorrow
         ]
@@ -105,16 +106,16 @@ class Skola24CalendarEntity(CalendarEntity):
 
     def _lesson_to_event(self, lesson: dict) -> CalendarEvent:
         """Convert a lesson dict to a CalendarEvent."""
-        start = f"{lesson['date']}T{lesson['start_time']}+02:00"
-        end = f"{lesson['date']}T{lesson['end_time']}+02:00"
-        summary = lesson.get("title", "Lesson")
-        location = lesson.get("location", "")
-        description = f"Teacher: {lesson.get('teacher', '')}, Location: {lesson.get('location', '')}"
-        tz = ZoneInfo("Europe/Stockholm")
+        lesson_date = date.fromisoformat(lesson["date"])
+        tz = dt_util.DEFAULT_TIME_ZONE
         return CalendarEvent(
-            start=datetime.fromisoformat(start).replace(tzinfo=tz),
-            end=datetime.fromisoformat(end).replace(tzinfo=tz),
-            summary=summary,
-            location=location,
-            description=description,
+            start=datetime.combine(
+                lesson_date, time.fromisoformat(lesson["start_time"]), tz
+            ),
+            end=datetime.combine(
+                lesson_date, time.fromisoformat(lesson["end_time"]), tz
+            ),
+            summary=lesson.get("title", "Lesson"),
+            location=lesson.get("location", ""),
+            description=f"Teacher: {lesson.get('teacher', '')}, Location: {lesson.get('location', '')}",
         )

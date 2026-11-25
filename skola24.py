@@ -1,10 +1,8 @@
-import asyncio
-import aiohttp
 import datetime
 import json
 import logging
-import requests
-import uuid
+
+import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -12,8 +10,8 @@ _LOGGER = logging.getLogger(__name__)
 class API:
     x_scope = "8a22163c-8662-4535-9050-bc5e1923df48"
 
-    def __init__(self) -> None:
-        self.session = aiohttp.ClientSession()
+    def __init__(self, session: aiohttp.ClientSession) -> None:
+        self.session = session
         self.base_url = "https://web.skola24.se"
         self.headers = {
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -24,14 +22,6 @@ class API:
             "Origin": self.base_url,
             "Connection": "keep-alive",
         }
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *excinfo):
-        """Close the aiohttp session when the object is deleted."""
-        _LOGGER.info("Closing aiohttp session")
-        await self.session.close()
 
     # Function to get key
     async def get_key(self):
@@ -113,6 +103,7 @@ class API:
                 for _class in classes:
                     if _class["groupName"] == schema_name:
                         return _class["groupGuid"]
+                raise ValueError(f"Schema {schema_name} not found in {host_name}")
             elif jsonResponse["data"]["validationErrors"][0]["id"] == 1:
                 raise ValueError(f"Host {host_name} not found")
             else:
@@ -174,14 +165,28 @@ class API:
         ) as response:
             return await response.json()
 
-    async def get_timetable(self, host_name: str, unit_name, schema_id: str, week: int):
-        """Return a list of lessons for a given week and year, for a specific unit and schema ID.
+    async def resolve_guids(self, host_name: str, unit_name: str, schema_id: str):
+        """Return (unit_guid, schema_guid), raising ValueError if either is unknown."""
+        units = await self.get_units(host_name)
+        unit_guid = next(
+            (unit["unitGuid"] for unit in units if unit["unitId"] == unit_name), None
+        )
+        if not unit_guid:
+            raise ValueError(f"Unit {unit_name} not found in {host_name}")
+        schema_guid = await self.get_schema_guid(host_name, unit_guid, schema_id)
+        return unit_guid, schema_guid
+
+    async def get_timetable(
+        self, host_name: str, unit_name: str, schema_id: str, week: int, year: int
+    ):
+        """Return a list of lessons for a given ISO week and ISO year.
 
         Args:
         - host_name (str): The name of the host.
         - unit_name (str): The name of the unit.
         - schema_id (str): The schema ID.
-        - week (int): The week number.
+        - week (int): The ISO week number.
+        - year (int): The ISO year the week belongs to.
 
         Returns:
         - A list of dictionaries, where each dictionary represents a lesson and contains the following keys:
@@ -193,54 +198,25 @@ class API:
           - location (str): The location of the lesson.
 
         """
+        unit_guid, schema_guid = await self.resolve_guids(
+            host_name, unit_name, schema_id
+        )
 
-        # Get unit guid
-        units = await self.get_units(host_name)
-        unit_guid = None
-        for unit in units:
-            if unit["unitId"] == unit_name:
-                unit_guid = unit["unitGuid"]
-
-        if not unit_guid:
-            raise ValueError(f"Unit {unit_name} not found in {host_name}")
-
-        # Get school year guid
-        year = datetime.date.today().year
         schoolyears_result = await self.get_active_school_years(host_name)
         school_year_guid = schoolyears_result["data"]["activeSchoolYears"][0]["guid"]
 
         render_key = await self.get_key()
 
-        schema_guid = await self.get_schema_guid(host_name, unit_guid, schema_id)
-
         timetable_data = await self.__get_timetable(
             render_key, host_name, unit_guid, schema_guid, school_year_guid, week, year
         )
         if not len(timetable_data["validation"]) > 0:
-            dates = {}
-
-            for item in timetable_data["data"]["textList"]:
-                if item["type"] == "HeadingDay":
-                    day_of_week = item["text"].split(" ")[0]
-                    day = int(item["text"].split(" ")[1].split("/")[0])
-                    month = int(item["text"].split(" ")[1].split("/")[1])
-                    dates[
-                        {
-                            "Måndag": 1,
-                            "Tisdag": 2,
-                            "Onsdag": 3,
-                            "Torsdag": 4,
-                            "Fredag": 5,
-                        }[day_of_week]
-                    ] = {"day": day, "month": month}
             lessons = []
             for lesson in timetable_data["data"]["lessonInfo"]:
                 teacher = lesson["texts"][1] if len(lesson["texts"]) > 1 else ""
                 location = lesson["texts"][2] if len(lesson["texts"]) > 2 else ""
-                date = datetime.date(
-                    year,
-                    dates[lesson["dayOfWeekNumber"]]["month"],
-                    dates[lesson["dayOfWeekNumber"]]["day"],
+                date = datetime.date.fromisocalendar(
+                    year, week, lesson["dayOfWeekNumber"]
                 )
                 start_time = datetime.time.fromisoformat(lesson["timeStart"])
                 end_time = datetime.time.fromisoformat(lesson["timeEnd"])
